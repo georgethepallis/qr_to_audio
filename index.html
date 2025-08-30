@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Auto Speech</title>
+  </head>
+  <body>
+    <audio id="myAudio" src="" autoplay muted></audio>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = urlParams.get("id");
+
+        const audio = document.getElementById("myAudio");
+
+        if (id) {
+          // Example: ?id=2 → MP3s/2.mp3
+          audio.src = `MP3s/${id}.mp3`;
+
+          // Try autoplay (muted initially to bypass restrictions)
+          audio.play().catch((err) => {
+            console.log("Autoplay prevented:", err.message);
+          });
+        } else {
+          document.body.insertAdjacentHTML(
+            "beforeend",
+            "<p>Sorry, No ID provided!</p>"
+          );
+        }
+      });
+
+      // Unmute and play when the user interacts
+      document.addEventListener("click", () => {
+        const audio = document.getElementById("myAudio");
+        audio.muted = false;
+        audio.play();
+      });
+    </script>
+  </body>
+</html>
