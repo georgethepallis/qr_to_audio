@@ -15,12 +15,9 @@
         const audio = document.getElementById("myAudio");
 
         if (id) {
-          // Example: ?id=2 → MP3s/2.mp3
           audio.src = `MP3s/${id}.mp3`;
-
-          // Try autoplay (muted initially to bypass restrictions)
           audio.play().catch((err) => {
-            console.log("Autoplay prevented:", err.message);
+            console.log("Autoplay prevented", err.message);
           });
         } else {
           document.body.insertAdjacentHTML(
@@ -30,7 +27,6 @@
         }
       });
 
-      // Unmute and play when the user interacts
       document.addEventListener("click", () => {
         const audio = document.getElementById("myAudio");
         audio.muted = false;
