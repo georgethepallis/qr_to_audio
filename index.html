@@ -2,10 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Auto Speech</title>
+    <title>Question</title>
   </head>
+  <style>
+    body {
+      background-color: black;
+    }
+
+    h1 {
+      position: absolute;
+
+      top: 200px;
+      right: 0;
+      left: 0;
+
+      color: yellow;
+      font-family: sans-serif;
+      font-size: 200px;
+      text-align: center;
+    }
+  </style>
   <body>
     <audio id="myAudio" src="" autoplay muted></audio>
+
+    <h1>Tap the screen</h1>
 
     <script>
       document.addEventListener("DOMContentLoaded", () => {
