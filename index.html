@@ -2,59 +2,137 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Question</title>
+    <title>Random Audio Player</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin-top: 60px;
+      }
+      #textBox {
+        margin-top: 30px;
+        font-size: 26px;
+        white-space: pre-wrap;
+      }
+    </style>
   </head>
-  <style>
-    body {
-      background-color: black;
-    }
 
-    h1 {
-      position: absolute;
-
-      top: 200px;
-      right: 0;
-      left: 0;
-
-      color: yellow;
-      font-family: sans-serif;
-      font-size: 200px;
-      text-align: center;
-    }
-
-    p {
-      color: white;
-    }
-  </style>
   <body>
-    <audio id="myAudio" src="" autoplay muted></audio>
-
     <h1>Tap the screen</h1>
+    <audio id="player" autoplay muted></audio>
+    <div id="textBox"></div>
 
     <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const id = urlParams.get("id");
+      // ------------------------------
+      // CONFIGURATION
+      // ------------------------------
 
-        const audio = document.getElementById("myAudio");
+      // For double-tap → which folder to switch to
+      // (you can expand this)
+      const fallbackFolders = {
+        birds: "animals",
+        animals: "birds",
+      };
 
-        if (id) {
-          audio.src = `MP3s/${id}.mp3`;
-          audio.play().catch((err) => {
-            console.log("Autoplay prevented", err.message);
-          });
-        } else {
-          document.body.insertAdjacentHTML(
-            "beforeend",
-            "<p>Sorry, No ID provided!</p>"
-          );
+      // Base directory for your libraries (NOT root)
+      const LIB_ROOT = "/libraries/";
+
+      // ------------------------------
+      // SIMPLE HELPERS
+      // ------------------------------
+
+      function loadJSON(path) {
+        return fetch(path).then((r) => r.json());
+      }
+      function loadText(path) {
+        return fetch(path).then((r) => r.text());
+      }
+      function pickRandom(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+
+      // ------------------------------
+      // MAIN PLAY FUNCTION
+      // ------------------------------
+
+      async function playRandomFromFolder(folderName) {
+        const audio = document.getElementById("player");
+        const textBox = document.getElementById("textBox");
+
+        const folderPath = `${LIB_ROOT}${folderName}/`;
+
+        // Load the list.json containing filenames
+        const files = await loadJSON(folderPath + "list.json");
+
+        // Track which files have been played already
+        const historyKey = `played_${folderName}`;
+        let played = JSON.parse(localStorage.getItem(historyKey) || "[]");
+
+        // If all files have been played → reset
+        if (played.length >= files.length) {
+          played = [];
         }
-      });
 
-      document.addEventListener("click", () => {
-        const audio = document.getElementById("myAudio");
+        const remaining = files.filter((f) => !played.includes(f));
+        const selection = pickRandom(remaining);
+
+        // Update localStorage
+        played.push(selection);
+        localStorage.setItem(historyKey, JSON.stringify(played));
+
+        // Play the chosen mp3
+        audio.src = folderPath + selection + ".mp3";
         audio.muted = false;
         audio.play();
+
+        // Load matching txt file
+        const txt = await loadText(folderPath + selection + ".txt");
+        textBox.textContent = txt;
+      }
+
+      // ------------------------------
+      // GET ID FROM URL
+      // ------------------------------
+
+      const params = new URLSearchParams(window.location.search);
+      let currentFolder = params.get("id");
+
+      if (!currentFolder) {
+        document.body.insertAdjacentHTML("beforeend", "<p>No ID provided!</p>");
+      }
+
+      // ------------------------------
+      // DOUBLE-TAP / DOUBLE-CLICK HANDLER
+      // ------------------------------
+
+      let lastTap = 0;
+
+      document.addEventListener("click", () => {
+        const now = Date.now();
+
+        if (now - lastTap < 300) {
+          // DOUBLE TAP
+          const next = fallbackFolders[currentFolder];
+          if (next) {
+            currentFolder = next;
+            playRandomFromFolder(currentFolder);
+          }
+        } else {
+          // SINGLE TAP
+          playRandomFromFolder(currentFolder);
+        }
+
+        lastTap = now;
+      });
+
+      // ------------------------------
+      // INITIAL LOAD
+      // ------------------------------
+
+      document.addEventListener("DOMContentLoaded", () => {
+        if (currentFolder) {
+          playRandomFromFolder(currentFolder);
+        }
       });
     </script>
   </body>
