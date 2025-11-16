@@ -5,14 +5,19 @@
     <title>Random Audio Player</title>
     <style>
       body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        margin-top: 60px;
+        background-color: black;
       }
       #textBox {
-        margin-top: 30px;
-        font-size: 26px;
-        white-space: pre-wrap;
+        position: absolute;
+
+        top: 200px;
+        right: 0;
+        left: 0;
+
+        color: yellow;
+        font-family: sans-serif;
+        font-size: 200px;
+        text-align: center;
       }
     </style>
   </head>
@@ -35,7 +40,7 @@
       };
 
       // Base directory for your libraries (NOT root)
-      const LIB_ROOT = "/libraries/";
+      const LIB_ROOT = "./Libraries";
 
       // ------------------------------
       // SIMPLE HELPERS
