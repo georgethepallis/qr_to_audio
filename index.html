@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Shared Audio Queue with Answers</title>
+    <title>Shared Audio Queue with Answers (Secure)</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -42,6 +42,7 @@
 
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 
     <script>
       const firebaseConfig = {
@@ -57,12 +58,13 @@
 
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
+      const auth = firebase.auth();
 
       const LIB_ROOT = "./Libraries/";
       const foldersFallback = {
         Amorgos: ["1", "2", "3", "4", "5"],
         Andros: ["1", "2", "3", "4", "5"],
-        Answers: [], // contains files like 1_a.mp3 and 1_a.txt
+        Answers: [], // answer files like 1_a.mp3 and 1_a.txt
       };
 
       const headerEl = document.getElementById("mainHeader");
@@ -76,6 +78,7 @@
       let lastPlayedFile = null;
       let audioFinished = true;
       let isAnswerPlaying = false;
+      let userId = null;
 
       /* ----- Helpers ----- */
       function dbg(...args) {
@@ -161,7 +164,7 @@
           clearTimeout(doubleTapTimer);
           doubleTapTimer = null;
 
-          // double tap logic
+          // Double tap logic
           if (isAnswerPlaying) {
             audioEl.pause();
             isAnswerPlaying = false;
@@ -197,34 +200,45 @@
         dbg("Audio started");
       });
 
-      /* ----- Init ----- */
-      (async function init() {
-        try {
-          const id = getParamId();
-          if (!id) {
-            textBox.textContent = "Missing ?id=FolderName in URL";
-            dbg("Missing folder id");
-            return;
-          }
-          currentFolder = id;
+      /* ----- Initialize Firebase Auth and App ----- */
+      auth
+        .signInAnonymously()
+        .then((userCredential) => {
+          userId = userCredential.user.uid;
+          dbg("Signed in anonymously as", userId);
 
-          await initFolders();
-          if (!folders[currentFolder] || currentFolder === "Answers") {
-            textBox.textContent = `Folder "${currentFolder}" not found. Available: ${Object.keys(
-              folders
-            )
-              .filter((f) => f !== "Answers")
-              .join(", ")}`;
-            return;
-          }
+          (async function initApp() {
+            try {
+              const id = getParamId();
+              if (!id) {
+                textBox.textContent = "Missing ?id=FolderName in URL";
+                dbg("Missing folder id");
+                return;
+              }
+              currentFolder = id;
 
-          document.body.addEventListener("pointerup", onUserTap);
-          dbg("Ready — tap to play, double-tap to play answer / stop answer");
-        } catch (err) {
-          dbg("Init error", err);
-          textBox.textContent = "Initialization error: " + err.message;
-        }
-      })();
+              await initFolders();
+              if (!folders[currentFolder] || currentFolder === "Answers") {
+                textBox.textContent = `Folder "${currentFolder}" not found. Available: ${Object.keys(
+                  folders
+                )
+                  .filter((f) => f !== "Answers")
+                  .join(", ")}`;
+                return;
+              }
+
+              document.body.addEventListener("pointerup", onUserTap);
+              dbg("Ready — tap to play, double-tap to play/stop answer");
+            } catch (err) {
+              dbg("Init error", err);
+              textBox.textContent = "Initialization error: " + err.message;
+            }
+          })();
+        })
+        .catch((err) => {
+          dbg("Auth error", err);
+          textBox.textContent = "Failed to authenticate: " + err.message;
+        });
     </script>
   </body>
 </html>
