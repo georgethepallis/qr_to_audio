@@ -1,0 +1,18 @@
+{
+  "folders": {
+    "Amorgos": ["61", "62", "63", "64", "65"],
+    "Andros": ["1", "2", "3", "4", "5"]
+  },
+  "queues": {
+    "exampleUser123": {
+      "Amorgos": {
+        "played": ["63", "64"],
+        "lastPlayed": "64"
+      },
+      "Andros": {
+        "played": ["2"],
+        "lastPlayed": "2"
+      }
+    }
+  }
+}

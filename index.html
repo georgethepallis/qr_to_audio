@@ -1,144 +1,230 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <title>Random Audio Player</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Shared Audio Queue with Answers</title>
     <style>
       body {
-        background-color: black;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin: 0;
+        padding: 40px;
+        background: #fff;
+        color: #111;
+        user-select: none;
+      }
+      #mainHeader {
+        font-size: 20px;
+        transition: opacity 0.35s ease;
       }
       #textBox {
-        position: absolute;
-
-        top: 200px;
-        right: 0;
-        left: 0;
-
-        color: yellow;
-        font-family: sans-serif;
-        font-size: 200px;
-        text-align: center;
+        margin-top: 30px;
+        font-size: 22px;
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+        white-space: pre-wrap;
+      }
+      #debug {
+        margin-top: 18px;
+        font-family: monospace;
+        color: #666;
+        font-size: 13px;
       }
     </style>
   </head>
-
   <body>
-    <h1>Tap the screen</h1>
-    <audio id="player" autoplay muted></audio>
-    <div id="textBox"></div>
+    <h1 id="mainHeader">Tap anywhere to begin</h1>
+    <div id="textBox">(text will appear here)</div>
+    <div id="debug"></div>
+    <audio id="audio"></audio>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
     <script>
-      // ------------------------------
-      // CONFIGURATION
-      // ------------------------------
-
-      // For double-tap → which folder to switch to
-      // (you can expand this)
-      const fallbackFolders = {
-        birds: "animals",
-        animals: "birds",
+      const firebaseConfig = {
+        apiKey: "AIzaSyDHiFqgdHCUSrkQ69jLu9PdQERVuH0V35o",
+        authDomain: "boardgame2025-de850.firebaseapp.com",
+        databaseURL:
+          "https://boardgame2025-de850-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "boardgame2025-de850",
+        storageBucket: "boardgame2025-de850.firebasestorage.app",
+        messagingSenderId: "213373977914",
+        appId: "1:213373977914:web:3259e35f2f92bf318e3c03",
       };
 
-      // Base directory for your libraries (NOT root)
-      const LIB_ROOT = "./Libraries";
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
 
-      // ------------------------------
-      // SIMPLE HELPERS
-      // ------------------------------
+      const LIB_ROOT = "./Libraries/";
+      const foldersFallback = {
+        Amorgos: ["1", "2", "3", "4", "5"],
+        Andros: ["1", "2", "3", "4", "5"],
+        Answers: [], // contains files like 1_a.mp3 and 1_a.txt
+      };
 
-      function loadJSON(path) {
-        return fetch(path).then((r) => r.json());
+      const headerEl = document.getElementById("mainHeader");
+      const textBox = document.getElementById("textBox");
+      const debugEl = document.getElementById("debug");
+      const audioEl = document.getElementById("audio");
+
+      let folders = {};
+      let currentFolder = null;
+      let doubleTapTimer = null;
+      let lastPlayedFile = null;
+      let audioFinished = true;
+      let isAnswerPlaying = false;
+
+      /* ----- Helpers ----- */
+      function dbg(...args) {
+        console.log(...args);
+        debugEl.textContent = args.join(" ");
       }
-      function loadText(path) {
-        return fetch(path).then((r) => r.text());
+      function getParamId() {
+        return new URLSearchParams(window.location.search).get("id");
       }
-      function pickRandom(arr) {
-        return arr[Math.floor(Math.random() * arr.length)];
+      function folderQueueRef(folder) {
+        return db.ref(`folderQueues/${folder}`);
       }
-
-      // ------------------------------
-      // MAIN PLAY FUNCTION
-      // ------------------------------
-
-      async function playRandomFromFolder(folderName) {
-        const audio = document.getElementById("player");
-        const textBox = document.getElementById("textBox");
-
-        const folderPath = `${LIB_ROOT}${folderName}/`;
-
-        // Load the list.json containing filenames
-        const files = await loadJSON(folderPath + "list.json");
-
-        // Track which files have been played already
-        const historyKey = `played_${folderName}`;
-        let played = JSON.parse(localStorage.getItem(historyKey) || "[]");
-
-        // If all files have been played → reset
-        if (played.length >= files.length) {
-          played = [];
+      function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [array[i], array[j]] = [array[j], array[i]];
         }
-
-        const remaining = files.filter((f) => !played.includes(f));
-        const selection = pickRandom(remaining);
-
-        // Update localStorage
-        played.push(selection);
-        localStorage.setItem(historyKey, JSON.stringify(played));
-
-        // Play the chosen mp3
-        audio.src = folderPath + selection + ".mp3";
-        audio.muted = false;
-        audio.play();
-
-        // Load matching txt file
-        const txt = await loadText(folderPath + selection + ".txt");
-        textBox.textContent = txt;
+        return array;
       }
 
-      // ------------------------------
-      // GET ID FROM URL
-      // ------------------------------
-
-      const params = new URLSearchParams(window.location.search);
-      let currentFolder = params.get("id");
-
-      if (!currentFolder) {
-        document.body.insertAdjacentHTML("beforeend", "<p>No ID provided!</p>");
-      }
-
-      // ------------------------------
-      // DOUBLE-TAP / DOUBLE-CLICK HANDLER
-      // ------------------------------
-
-      let lastTap = 0;
-
-      document.addEventListener("click", () => {
-        const now = Date.now();
-
-        if (now - lastTap < 300) {
-          // DOUBLE TAP
-          const next = fallbackFolders[currentFolder];
-          if (next) {
-            currentFolder = next;
-            playRandomFromFolder(currentFolder);
-          }
+      /* ----- Initialize folders ----- */
+      async function initFolders() {
+        const snap = await db.ref("folders").get();
+        if (snap.exists()) {
+          folders = snap.val();
+          dbg("Folders loaded", Object.keys(folders));
         } else {
-          // SINGLE TAP
-          playRandomFromFolder(currentFolder);
+          await db.ref("folders").set(foldersFallback);
+          folders = foldersFallback;
+          dbg("Folders fallback written");
+        }
+      }
+
+      /* ----- Shared queue logic ----- */
+      async function getNextFromQueue(folder) {
+        const queueRef = folderQueueRef(folder);
+        let queueSnap = await queueRef.get();
+        let queue = queueSnap.exists() ? queueSnap.val() : [];
+
+        const allFiles = folders[folder];
+        if (!queue || queue.length === 0) queue = shuffle([...allFiles]);
+
+        const next = queue.shift();
+        await queueRef.set(queue);
+        return next;
+      }
+
+      /* ----- Play audio ----- */
+      async function playAudio(base, isAnswer = false) {
+        try {
+          const folder = isAnswer ? "Answers" : currentFolder;
+          audioEl.src = `${LIB_ROOT}${folder}/${base}${
+            isAnswer ? "_a" : ""
+          }.mp3`;
+          audioEl.load();
+          await audioEl.play();
+          audioFinished = false;
+          isAnswerPlaying = isAnswer;
+          lastPlayedFile = base;
+
+          const txtFile = `${LIB_ROOT}${folder}/${base}${
+            isAnswer ? "_a" : ""
+          }.txt`;
+          const txtRes = await fetch(txtFile);
+          textBox.textContent = txtRes.ok
+            ? await txtRes.text()
+            : "(text not found)";
+        } catch (err) {
+          dbg("Play error", err);
+          textBox.textContent = "Failed to play: " + (err.message || err);
+        }
+      }
+
+      /* ----- Play next audio ----- */
+      async function playNext() {
+        const next = await getNextFromQueue(currentFolder);
+        await playAudio(next);
+      }
+
+      /* ----- Tap handler ----- */
+      async function onUserTap() {
+        if (doubleTapTimer) {
+          clearTimeout(doubleTapTimer);
+          doubleTapTimer = null;
+
+          // double tap logic
+          if (isAnswerPlaying) {
+            audioEl.pause();
+            isAnswerPlaying = false;
+            dbg("Answer stopped");
+          } else if (lastPlayedFile) {
+            await playAudio(lastPlayedFile, true); // play answer mp3 + show text
+          }
+          return;
         }
 
-        lastTap = now;
+        doubleTapTimer = setTimeout(async () => {
+          doubleTapTimer = null;
+          if (isAnswerPlaying) {
+            dbg("Tap ignored: answer is playing");
+            return;
+          }
+          if (audioFinished && lastPlayedFile) {
+            await playAudio(lastPlayedFile); // replay
+          } else if (!lastPlayedFile || audioFinished) {
+            await playNext();
+          }
+        }, 300);
+      }
+
+      /* ----- Audio events ----- */
+      audioEl.addEventListener("ended", () => {
+        audioFinished = true;
+        isAnswerPlaying = false;
+        dbg("Audio ended");
+      });
+      audioEl.addEventListener("play", () => {
+        audioFinished = false;
+        dbg("Audio started");
       });
 
-      // ------------------------------
-      // INITIAL LOAD
-      // ------------------------------
+      /* ----- Init ----- */
+      (async function init() {
+        try {
+          const id = getParamId();
+          if (!id) {
+            textBox.textContent = "Missing ?id=FolderName in URL";
+            dbg("Missing folder id");
+            return;
+          }
+          currentFolder = id;
 
-      document.addEventListener("DOMContentLoaded", () => {
-        if (currentFolder) {
-          playRandomFromFolder(currentFolder);
+          await initFolders();
+          if (!folders[currentFolder] || currentFolder === "Answers") {
+            textBox.textContent = `Folder "${currentFolder}" not found. Available: ${Object.keys(
+              folders
+            )
+              .filter((f) => f !== "Answers")
+              .join(", ")}`;
+            return;
+          }
+
+          document.body.addEventListener("pointerup", onUserTap);
+          dbg("Ready — tap to play, double-tap to play answer / stop answer");
+        } catch (err) {
+          dbg("Init error", err);
+          textBox.textContent = "Initialization error: " + err.message;
         }
-      });
+      })();
     </script>
   </body>
 </html>
