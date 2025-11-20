@@ -3,15 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Shared Audio Queue with Answers (Secure)</title>
+    <title>Shared Audio Queue with Answers</title>
+
     <style>
       body {
+        background: #000;
+        color: #ffd800;
+        font-weight: bold;
         font-family: Arial, sans-serif;
         text-align: center;
-        margin: 0;
         padding: 40px;
-        background: #fff;
-        color: #111;
+        margin: 0;
         user-select: none;
       }
       #mainHeader {
@@ -29,17 +31,20 @@
       #debug {
         margin-top: 18px;
         font-family: monospace;
-        color: #666;
         font-size: 13px;
+        opacity: 0.5;
       }
     </style>
   </head>
+
   <body>
     <h1 id="mainHeader">Tap anywhere to begin</h1>
     <div id="textBox">(text will appear here)</div>
     <div id="debug"></div>
+
     <audio id="audio"></audio>
 
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
@@ -60,11 +65,14 @@
       const db = firebase.database();
       const auth = firebase.auth();
 
+      /* ============================
+   Variables and UI Elements
+   ============================ */
       const LIB_ROOT = "./Libraries/";
       const foldersFallback = {
         Amorgos: ["1", "2", "3", "4", "5"],
         Andros: ["1", "2", "3", "4", "5"],
-        Answers: [], // answer files like 1_a.mp3 and 1_a.txt
+        Answers: [],
       };
 
       const headerEl = document.getElementById("mainHeader");
@@ -74,171 +82,190 @@
 
       let folders = {};
       let currentFolder = null;
-      let doubleTapTimer = null;
       let lastPlayedFile = null;
       let audioFinished = true;
       let isAnswerPlaying = false;
-      let userId = null;
+      let doubleTapTimer = null;
 
-      /* ----- Helpers ----- */
       function dbg(...args) {
         console.log(...args);
         debugEl.textContent = args.join(" ");
       }
+
       function getParamId() {
         return new URLSearchParams(window.location.search).get("id");
       }
+
       function folderQueueRef(folder) {
         return db.ref(`folderQueues/${folder}`);
       }
-      function shuffle(array) {
-        for (let i = array.length - 1; i > 0; i--) {
+
+      function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [array[i], array[j]] = [array[j], array[i]];
+          [arr[i], arr[j]] = [arr[j], arr[i]];
         }
-        return array;
+        return arr;
       }
 
-      /* ----- Initialize folders ----- */
       async function initFolders() {
         const snap = await db.ref("folders").get();
-        if (snap.exists()) {
-          folders = snap.val();
-          dbg("Folders loaded", Object.keys(folders));
-        } else {
+        if (snap.exists()) folders = snap.val();
+        else {
           await db.ref("folders").set(foldersFallback);
           folders = foldersFallback;
-          dbg("Folders fallback written");
         }
       }
 
-      /* ----- Shared queue logic ----- */
+      /* =============================
+   Shared Queue
+   ============================= */
       async function getNextFromQueue(folder) {
-        const queueRef = folderQueueRef(folder);
-        let queueSnap = await queueRef.get();
-        let queue = queueSnap.exists() ? queueSnap.val() : [];
+        const ref = folderQueueRef(folder);
+        let snap = await ref.get();
+        let queue = snap.exists() ? snap.val() : [];
 
         const allFiles = folders[folder];
-        if (!queue || queue.length === 0) queue = shuffle([...allFiles]);
+        if (!queue || queue.length === 0) {
+          queue = shuffle([...allFiles]);
+        }
 
         const next = queue.shift();
-        await queueRef.set(queue);
+        await ref.set(queue);
         return next;
       }
 
-      /* ----- Play audio ----- */
+      /* =============================
+   Check for Answer Files
+   ============================= */
+      async function answerExists(base) {
+        const mp3 = `${LIB_ROOT}Answers/${base}_a.mp3`;
+        const txt = `${LIB_ROOT}Answers/${base}_a.txt`;
+
+        const mp3Exists = await fetch(mp3, { method: "HEAD" }).then(
+          (r) => r.ok
+        );
+        const txtExists = await fetch(txt, { method: "HEAD" }).then(
+          (r) => r.ok
+        );
+
+        return mp3Exists && txtExists;
+      }
+
+      /* =============================
+   Play Normal or Answer Audio
+   ============================= */
       async function playAudio(base, isAnswer = false) {
         try {
           const folder = isAnswer ? "Answers" : currentFolder;
-          audioEl.src = `${LIB_ROOT}${folder}/${base}${
-            isAnswer ? "_a" : ""
-          }.mp3`;
+          const suffix = isAnswer ? "_a" : "";
+          const mp3 = `${LIB_ROOT}${folder}/${base}${suffix}.mp3`;
+          const txt = `${LIB_ROOT}${folder}/${base}${suffix}.txt`;
+
+          audioEl.src = mp3;
           audioEl.load();
           await audioEl.play();
+
+          lastPlayedFile = base;
           audioFinished = false;
           isAnswerPlaying = isAnswer;
-          lastPlayedFile = base;
 
-          const txtFile = `${LIB_ROOT}${folder}/${base}${
-            isAnswer ? "_a" : ""
-          }.txt`;
-          const txtRes = await fetch(txtFile);
-          textBox.textContent = txtRes.ok
-            ? await txtRes.text()
-            : "(text not found)";
+          const res = await fetch(txt);
+          textBox.textContent = res.ok ? await res.text() : "";
         } catch (err) {
-          dbg("Play error", err);
-          textBox.textContent = "Failed to play: " + (err.message || err);
+          dbg("Play error:", err);
+          textBox.textContent = "Playback error";
         }
       }
 
-      /* ----- Play next audio ----- */
       async function playNext() {
         const next = await getNextFromQueue(currentFolder);
         await playAudio(next);
       }
 
-      /* ----- Tap handler ----- */
+      /* =============================
+   TAP HANDLING
+   ============================= */
       async function onUserTap() {
         if (doubleTapTimer) {
           clearTimeout(doubleTapTimer);
           doubleTapTimer = null;
 
-          // Double tap logic
+          // DOUBLE TAP
+          // 1) If answer is currently playing → stop it
           if (isAnswerPlaying) {
             audioEl.pause();
             isAnswerPlaying = false;
-            dbg("Answer stopped");
-          } else if (lastPlayedFile) {
-            await playAudio(lastPlayedFile, true); // play answer mp3 + show text
+            dbg("Answer stopped.");
+            return;
           }
+
+          // 2) If no file has been played yet → ignore double tap
+          if (!lastPlayedFile) return;
+
+          // 3) Check if answer files exist
+          const exists = await answerExists(lastPlayedFile);
+
+          // 4) If no answer files → double tap does nothing
+          if (!exists) {
+            dbg("No answer available → double tap ignored");
+            return;
+          }
+
+          // 5) If answer exists → play it
+          await playAudio(lastPlayedFile, true);
           return;
         }
 
+        // SINGLE TAP
         doubleTapTimer = setTimeout(async () => {
           doubleTapTimer = null;
-          if (isAnswerPlaying) {
-            dbg("Tap ignored: answer is playing");
+
+          // If answer is playing, ignore single taps
+          if (isAnswerPlaying) return;
+
+          // Replay last track if finished
+          if (audioFinished && lastPlayedFile) {
+            await playAudio(lastPlayedFile);
             return;
           }
-          if (audioFinished && lastPlayedFile) {
-            await playAudio(lastPlayedFile); // replay
-          } else if (!lastPlayedFile || audioFinished) {
+
+          // Otherwise play next in queue
+          if (audioFinished) {
             await playNext();
           }
         }, 300);
       }
 
-      /* ----- Audio events ----- */
       audioEl.addEventListener("ended", () => {
         audioFinished = true;
         isAnswerPlaying = false;
-        dbg("Audio ended");
-      });
-      audioEl.addEventListener("play", () => {
-        audioFinished = false;
-        dbg("Audio started");
       });
 
-      /* ----- Initialize Firebase Auth and App ----- */
-      auth
-        .signInAnonymously()
-        .then((userCredential) => {
-          userId = userCredential.user.uid;
-          dbg("Signed in anonymously as", userId);
+      /* =============================
+   START APP
+   ============================= */
+      auth.signInAnonymously().then(async (user) => {
+        dbg("Signed in:", user.user.uid);
 
-          (async function initApp() {
-            try {
-              const id = getParamId();
-              if (!id) {
-                textBox.textContent = "Missing ?id=FolderName in URL";
-                dbg("Missing folder id");
-                return;
-              }
-              currentFolder = id;
+        const id = getParamId();
+        if (!id) {
+          textBox.textContent = "Missing ?id=FolderName";
+          return;
+        }
 
-              await initFolders();
-              if (!folders[currentFolder] || currentFolder === "Answers") {
-                textBox.textContent = `Folder "${currentFolder}" not found. Available: ${Object.keys(
-                  folders
-                )
-                  .filter((f) => f !== "Answers")
-                  .join(", ")}`;
-                return;
-              }
+        currentFolder = id;
 
-              document.body.addEventListener("pointerup", onUserTap);
-              dbg("Ready — tap to play, double-tap to play/stop answer");
-            } catch (err) {
-              dbg("Init error", err);
-              textBox.textContent = "Initialization error: " + err.message;
-            }
-          })();
-        })
-        .catch((err) => {
-          dbg("Auth error", err);
-          textBox.textContent = "Failed to authenticate: " + err.message;
-        });
+        await initFolders();
+
+        if (!folders[currentFolder] || currentFolder === "Answers") {
+          textBox.textContent = "Invalid folder name.";
+          return;
+        }
+
+        document.body.addEventListener("pointerup", onUserTap);
+        dbg("Ready.");
+      });
     </script>
   </body>
 </html>
