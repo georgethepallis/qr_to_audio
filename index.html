@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,7 +14,7 @@
     margin:0;
     padding:0;
     user-select:none;
-    touch-action:none;
+    touch-action:manipulation; /* ✅ eliminates 300ms delay */
   }
 
   #container {
@@ -27,6 +26,7 @@
     align-items:center;
     text-align:center;
     padding:40px;
+    touch-action:none; /* ✅ prevent browser interpreting double tap */
   }
 
   .invert {
@@ -56,10 +56,9 @@
 
 <script>
 const firebaseConfig = {
- apiKey: "AIzaSyDHiFqgdHCUSrkQ69jLu9PdQERVuH0V35o",
+ 	apiKey: "AIzaSyDHiFqgdHCUSrkQ69jLu9PdQERVuH0V35o",
         authDomain: "boardgame2025-de850.firebaseapp.com",
-        databaseURL:
-          "https://boardgame2025-de850-default-rtdb.europe-west1.firebasedatabase.app",
+        databaseURL: "https://boardgame2025-de850-default-rtdb.europe-west1.firebasedatabase.app",
         projectId: "boardgame2025-de850",
         storageBucket: "boardgame2025-de850.firebasestorage.app",
         messagingSenderId: "213373977914",
@@ -89,6 +88,7 @@ let lastPlayedFile = null;
 let audioFinished = true;
 let isAnswerPlaying = false;
 let doubleTapTimer = null;
+let tapLock = false;  // ✅ prevents double registration
 
 function dbg(...a){ console.log(...a); debugEl.textContent = a.join(" "); }
 
@@ -172,10 +172,14 @@ async function playNext(){
 
 function flashInvert(){
   document.body.classList.add("invert");
-  setTimeout(()=>document.body.classList.remove("invert"),150);
+  setTimeout(()=>document.body.classList.remove("invert"),100);
 }
 
 async function onTap(){
+  if (tapLock) return;     // ✅ ignore second event of same tap
+  tapLock = true;
+  setTimeout(()=>tapLock=false,120);
+
   flashInvert();
 
   if (doubleTapTimer){
@@ -190,10 +194,10 @@ async function onTap(){
 
     if (!lastPlayedFile) return;
 
-    const exists = await answerExists(lastPlayedFile);
-    if (!exists) return;
+    if (await answerExists(lastPlayedFile)){
+      await playAudio(lastPlayedFile,true);
+    }
 
-    await playAudio(lastPlayedFile,true);
     return;
   }
 
@@ -210,7 +214,7 @@ async function onTap(){
     if (audioFinished){
       await playNext();
     }
-  },250);
+  },220);
 }
 
 audioEl.addEventListener("ended",()=>{
@@ -233,8 +237,8 @@ auth.signInAnonymously().then(async ()=>{
     return;
   }
 
-  container.addEventListener("click", onTap, {passive:false});
-  container.addEventListener("touchend", onTap, {passive:false});
+  /* ✅ ONLY ONE EVENT TYPE */
+  container.addEventListener("pointerup", onTap);
 
   dbg("ready");
 });
